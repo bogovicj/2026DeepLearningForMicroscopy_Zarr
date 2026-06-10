@@ -1,0 +1,14 @@
+
+.quarto
+
+*.pdf
+
+*bak
+
+figures
+figures-conv
+videos
+
+
+/.quarto/
+/slides_files/
