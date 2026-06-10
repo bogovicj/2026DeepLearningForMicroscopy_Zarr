@@ -1,0 +1,939 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Zarr Shard Explorer</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0f1117; color: #e2e8f0; min-height: 100vh; }
+
+  .header { padding: 24px 32px; border-bottom: 1px solid #1e2435; background: #131720; }
+  .header h1 { font-size: 1.5rem; font-weight: 600; color: #7dd3fc; }
+  .header p { color: #94a3b8; font-size: 0.875rem; margin-top: 4px; }
+
+  .layout { display: grid; grid-template-columns: 300px 1fr; gap: 0; min-height: calc(100vh - 73px); }
+
+  .sidebar { background: #131720; border-right: 1px solid #1e2435; padding: 24px; overflow-y: auto; }
+  .main { padding: 24px; overflow-y: auto; }
+
+  .section { margin-bottom: 24px; }
+  .section-title {
+    font-size: 0.75rem; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.1em; color: #64748b; margin-bottom: 12px;
+  }
+
+  .field { margin-bottom: 12px; }
+  .field label { display: block; font-size: 0.8rem; color: #94a3b8; margin-bottom: 4px; }
+  .field input {
+    width: 100%; padding: 7px 10px; background: #1e2435; border: 1px solid #2d3748;
+    border-radius: 6px; color: #e2e8f0; font-size: 0.85rem; outline: none;
+    transition: border-color 0.15s;
+  }
+  .field input:focus { border-color: #3b82f6; }
+  .field input[readonly] {
+    color: #34d399; cursor: default; background: #0d1117;
+    border-color: #1e2435; font-weight: 500;
+  }
+
+  .row  { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+
+  .toggle-group { display: flex; gap: 4px; }
+  .toggle-btn {
+    flex: 1; padding: 7px; background: #1e2435; border: 1px solid #2d3748;
+    border-radius: 6px; color: #94a3b8; font-size: 0.82rem; cursor: pointer;
+    transition: all 0.15s; text-align: center;
+  }
+  .toggle-btn.active { background: #1d4ed8; border-color: #3b82f6; color: #fff; }
+  .toggle-btn:hover:not(.active) { border-color: #4b5563; color: #e2e8f0; }
+
+  .computed-block { margin-top: 4px; }
+  .computed-label { font-size: 0.75rem; color: #64748b; margin-bottom: 3px; }
+  .computed-value { font-size: 0.85rem; color: #34d399; font-weight: 600; }
+
+  .error-msg { color: #f87171; font-size: 0.8rem; padding: 3px 0; }
+
+  /* Main sections */
+  .viz-section { margin-bottom: 28px; }
+  .viz-section-header {
+    display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 1px solid #1e2435; padding-bottom: 8px; margin-bottom: 12px;
+  }
+  .viz-section-title { font-size: 0.88rem; font-weight: 600; color: #94a3b8; }
+  .viz-hint { font-size: 0.78rem; color: #64748b; }
+
+  .btn-small {
+    padding: 5px 11px; border-radius: 6px; border: 1px solid #2d3748;
+    background: #1e2435; color: #94a3b8; font-size: 0.78rem; cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn-small:hover { border-color: #4b5563; color: #e2e8f0; }
+
+  canvas { display: block; border-radius: 8px; }
+  #canvas2d { cursor: pointer; }
+
+  #canvas3d-container {
+    width: 100%; height: 500px; border-radius: 8px;
+    overflow: hidden; background: #080b10;
+  }
+
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 10px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 0.78rem; color: #94a3b8; }
+  .legend-swatch {
+    width: 14px; height: 14px; border-radius: 3px;
+    border: 1px solid rgba(255,255,255,0.12); flex-shrink: 0;
+  }
+
+  /* Byte layout */
+  .byte-layout-wrap { position: relative; }
+  #byte-layout-canvas { border-radius: 6px; cursor: crosshair; width: 100%; }
+
+  .stats-row { display: flex; gap: 28px; margin-top: 12px; flex-wrap: wrap; }
+  .stat-item .stat-label { font-size: 0.72rem; color: #64748b; }
+  .stat-item .stat-value { font-size: 0.9rem; color: #7dd3fc; font-weight: 600; margin-top: 1px; }
+
+  /* Tooltip */
+  .tooltip {
+    position: fixed; display: none;
+    background: #1e2435; border: 1px solid #3b82f6;
+    border-radius: 6px; padding: 5px 10px;
+    font-size: 0.78rem; color: #e2e8f0;
+    pointer-events: none; z-index: 200; white-space: nowrap;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  }
+
+  /* Info panel */
+  .info-panel {
+    background: #131720; border: 1px solid #1e2435; border-radius: 10px;
+    padding: 16px; margin-top: 4px; font-size: 0.82rem;
+  }
+  .info-panel h3 { color: #7dd3fc; margin-bottom: 10px; font-size: 0.88rem; }
+  .info-row {
+    display: flex; justify-content: space-between; align-items: baseline;
+    padding: 5px 0; border-bottom: 1px solid #1e2435;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .k { color: #94a3b8; }
+  .info-row .v { color: #e2e8f0; font-weight: 500; }
+</style>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+
+<div class="header">
+  <h1>Zarr Shard Explorer</h1>
+  <p>Visualize shard structure, inner chunk layout, and binary byte layout for sharded Zarr v3 arrays</p>
+</div>
+
+<div class="layout">
+  <!-- ── SIDEBAR ── -->
+  <div class="sidebar">
+
+    <div class="section">
+      <div class="section-title">Dimensions</div>
+      <div class="field">
+        <div class="toggle-group">
+          <button class="toggle-btn active" id="btn2d" onclick="window.setDims(2)">2D</button>
+          <button class="toggle-btn"        id="btn3d" onclick="window.setDims(3)">3D</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Shard Shape</div>
+      <div id="shard-shape-fields"></div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Chunks per Shard</div>
+      <div id="chunks-per-shard-fields"></div>
+      <div class="computed-block">
+        <div class="computed-label">Inner chunk shape (auto-computed):</div>
+        <div class="computed-value" id="inner-chunk-display">—</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Index Location</div>
+      <div class="field">
+        <div class="toggle-group">
+          <button class="toggle-btn"        id="btnIdxStart" onclick="window.setIndexLocation('start')">Start</button>
+          <button class="toggle-btn active" id="btnIdxEnd"   onclick="window.setIndexLocation('end')">End</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="error-area"></div>
+  </div>
+
+  <!-- ── MAIN ── -->
+  <div class="main">
+
+    <!-- Section 1: Grid Visualization -->
+    <div class="viz-section">
+      <div class="viz-section-header">
+        <span class="viz-section-title">Grid Visualization</span>
+        <span class="viz-hint" id="grid-hint">Click a chunk to toggle missing / present</span>
+      </div>
+
+      <!-- 2D view -->
+      <div id="viz-2d">
+        <canvas id="canvas2d"></canvas>
+        <div class="legend">
+          <div class="legend-item">
+            <div class="legend-swatch" style="background:hsl(200,68%,56%)"></div>
+            Present chunk
+          </div>
+          <div class="legend-item">
+            <div class="legend-swatch" style="background:#080b10;border-color:#2d3748"></div>
+            Missing chunk (no bytes in shard)
+          </div>
+        </div>
+      </div>
+
+      <!-- 3D view -->
+      <div id="viz-3d" style="display:none">
+        <div style="display:flex;justify-content:flex-end;margin-bottom:6px;">
+          <button class="btn-small" onclick="window.resetCamera3D()">Reset view</button>
+        </div>
+        <div id="canvas3d-container"></div>
+        <div class="legend">
+          <div class="legend-item">
+            <div class="legend-swatch" style="background:rgba(100,180,230,0.6)"></div>
+            Present chunk
+          </div>
+          <div class="legend-item">
+            <div class="legend-swatch" style="background:#080b10;border-color:#2d3748"></div>
+            Missing chunk
+          </div>
+          <div class="legend-item" style="font-size:0.75rem;color:#64748b;">
+            Axes: <span style="color:#ef4444">X</span>
+            <span style="color:#22c55e">Y</span>
+            <span style="color:#3b82f6">Z</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Section 2: Byte Layout -->
+    <div class="viz-section">
+      <div class="viz-section-header">
+        <span class="viz-section-title">Byte Layout</span>
+        <span class="viz-hint">Hover for details</span>
+      </div>
+      <div class="byte-layout-wrap">
+        <canvas id="byte-layout-canvas" height="70"></canvas>
+      </div>
+      <div class="legend">
+        <div class="legend-item">
+          <div class="legend-swatch" style="background:hsl(200,68%,56%)"></div>
+          Chunk data (compressed)
+        </div>
+        <div class="legend-item">
+          <div class="legend-swatch" style="background:#c8d6e5;border-color:#94a3b8"></div>
+          Shard index
+        </div>
+      </div>
+      <div class="stats-row" id="stats-row"></div>
+    </div>
+
+    <!-- Info Panel -->
+    <div class="info-panel">
+      <h3>Shard Details</h3>
+      <div id="shard-details"></div>
+    </div>
+
+  </div><!-- /.main -->
+</div><!-- /.layout -->
+
+<div class="tooltip" id="tooltip"></div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// ============================================================
+// Constants
+// ============================================================
+const BYTES_PER_ELEMENT = 4; // float32
+
+// ============================================================
+// State
+// ============================================================
+let dims = 2;
+let indexLocation = 'end';
+let chunkState = [];          // [{color:string, missing:bool, sizeFactor:number}]
+let byteLayoutSegs = [];      // [{px0,px1,type,chunkIdx,color,bytes}]
+let prevShardKey = '';
+
+// Three.js
+let scene3d = null, camera3d = null, renderer3d = null, controls3d = null;
+let animating3d = false, animFrameId3d = null;
+let allObj3d = [];            // every scene object (for disposal)
+let chunkMeshList = [];       // fill Mesh objects (for raycasting)
+let chunkMeshMap = new Map(); // fill mesh -> {edgeMesh, chunkIdx}
+let mouseDownPx = null;       // to distinguish click vs drag in 3D
+
+// ============================================================
+// Utility
+// ============================================================
+function fmtBytes(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1048576) return (b / 1024).toFixed(2) + ' KB';
+  if (b < 1073741824) return (b / 1048576).toFixed(2) + ' MB';
+  return (b / 1073741824).toFixed(2) + ' GB';
+}
+
+function getVal(id, def) {
+  const el = document.getElementById(id);
+  if (!el) return def;
+  const v = parseInt(el.value);
+  return isNaN(v) || v < 1 ? def : v;
+}
+
+function prodArr(a) { return a.reduce((x, y) => x * y, 1); }
+
+function getShardShape() {
+  return dims === 2
+    ? [getVal('ss0', 128), getVal('ss1', 128)]
+    : [getVal('ss0', 64), getVal('ss1', 64), getVal('ss2', 64)];
+}
+
+function getChunksPerShard() {
+  return dims === 2
+    ? [getVal('cps0', 4), getVal('cps1', 4)]
+    : [getVal('cps0', 4), getVal('cps1', 4), getVal('cps2', 4)];
+}
+
+function innerChunkShape(ss, cps) {
+  return ss.map((s, i) => Math.floor(s / cps[i]));
+}
+
+function shardKey(ss, cps) { return ss.join(',') + '|' + cps.join(','); }
+
+// Linear index (C-order) -> coordinate array
+function linToCoords(idx, cps) {
+  const coords = new Array(cps.length);
+  let rem = idx;
+  for (let i = cps.length - 1; i >= 0; i--) {
+    coords[i] = rem % cps[i];
+    rem = Math.floor(rem / cps[i]);
+  }
+  return coords;
+}
+
+// HSL string "hsl(h,s%,l%)" -> "#rrggbb"
+function hslToHex(hsl) {
+  const m = hsl.match(/hsl\(([\d.]+),([\d.]+)%,([\d.]+)%\)/);
+  if (!m) return '#888888';
+  let h = parseFloat(m[1]) / 360;
+  let s = parseFloat(m[2]) / 100;
+  let l = parseFloat(m[3]) / 100;
+  let r, g, b;
+  if (s === 0) {
+    r = g = b = l;
+  } else {
+    const hue2rgb = (p, q, t) => {
+      if (t < 0) t += 1; if (t > 1) t -= 1;
+      if (t < 1/6) return p + (q - p) * 6 * t;
+      if (t < 1/2) return q;
+      if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+      return p;
+    };
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    const p = 2 * l - q;
+    r = hue2rgb(p, q, h + 1/3);
+    g = hue2rgb(p, q, h);
+    b = hue2rgb(p, q, h - 1/3);
+  }
+  const to255 = x => Math.round(Math.max(0, Math.min(1, x)) * 255);
+  return '#' + [r, g, b].map(c => to255(c).toString(16).padStart(2, '0')).join('');
+}
+
+// Golden-angle hue distribution for visual variety
+function makeChunkColor(i, total) {
+  const hue = (i * 137.508) % 360;
+  return `hsl(${hue.toFixed(1)},68%,56%)`;
+}
+
+// ============================================================
+// Build sidebar fields
+// ============================================================
+function buildFields() {
+  const labels2 = ['Rows', 'Cols'];
+  const labels3 = ['Depth', 'Rows', 'Cols'];
+  const labels  = dims === 2 ? labels2 : labels3;
+  const ssDefs  = dims === 2 ? [128, 128] : [64, 64, 64];
+  const cpsDefs = dims === 2 ? [4, 4]     : [4, 4, 4];
+
+  const rowClass = dims === 2 ? 'row' : 'row3';
+
+  const makeGroup = (prefix, defs) =>
+    `<div class="${rowClass}">
+      ${labels.map((l, i) =>
+        `<div class="field">
+          <label>${l}</label>
+          <input type="number" id="${prefix}${i}" value="${defs[i]}" min="1" oninput="window.update()">
+        </div>`
+      ).join('')}
+    </div>`;
+
+  document.getElementById('shard-shape-fields').innerHTML      = makeGroup('ss',  ssDefs);
+  document.getElementById('chunks-per-shard-fields').innerHTML = makeGroup('cps', cpsDefs);
+}
+
+// ============================================================
+// Chunk state init
+// ============================================================
+function initChunkState(total) {
+  chunkState = Array.from({ length: total }, (_, i) => ({
+    color:      makeChunkColor(i, total),
+    missing:    false,
+    sizeFactor: 0.55 + Math.random() * 0.40
+  }));
+}
+
+// ============================================================
+// Validate
+// ============================================================
+function validate(ss, cps) {
+  const errs = [];
+  for (let i = 0; i < dims; i++) {
+    if (cps[i] < 1) {
+      errs.push(`Chunks per shard [dim ${i}] must be ≥ 1`);
+    } else if (ss[i] % cps[i] !== 0) {
+      errs.push(`Chunks per shard [dim ${i}] (${cps[i]}) must divide shard shape [dim ${i}] (${ss[i]}) evenly`);
+    }
+  }
+  return errs;
+}
+
+// ============================================================
+// Main update
+// ============================================================
+function update() {
+  const ss  = getShardShape();
+  const cps = getChunksPerShard();
+  const errs = validate(ss, cps);
+  const errArea = document.getElementById('error-area');
+
+  if (errs.length) {
+    errArea.innerHTML = errs.map(e => `<div class="error-msg">&#9888; ${e}</div>`).join('');
+    document.getElementById('inner-chunk-display').textContent = '—';
+    return;
+  }
+  errArea.innerHTML = '';
+
+  const ics = innerChunkShape(ss, cps);
+  document.getElementById('inner-chunk-display').textContent = '[' + ics.join(' × ') + ']';
+
+  // Reinit chunk state when grid shape changes
+  const key = shardKey(ss, cps);
+  if (key !== prevShardKey) {
+    prevShardKey = key;
+    initChunkState(prodArr(cps));
+  }
+
+  if (dims === 2) {
+    draw2D(ss, cps);
+  } else {
+    if (!renderer3d) initThreeJS();
+    draw3DScene(ss, cps);
+    if (!animating3d) startAnim3d();
+  }
+
+  drawByteLayout(ss, cps, ics);
+  updateInfoPanel(ss, cps, ics);
+}
+
+// ============================================================
+// 2D Canvas
+// ============================================================
+function draw2D(ss, cps) {
+  const canvas = document.getElementById('canvas2d');
+  const nR = cps[0], nC = cps[1];
+
+  const maxW = Math.min(canvas.parentElement.clientWidth || 640, 680);
+  const cellSz = Math.max(Math.min(Math.floor(maxW / Math.max(nR, nC)), 110), 14);
+
+  canvas.width  = cellSz * nC;
+  canvas.height = cellSz * nR;
+
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  for (let r = 0; r < nR; r++) {
+    for (let c = 0; c < nC; c++) {
+      const st = chunkState[r * nC + c];
+      ctx.fillStyle = st.missing ? '#080b10' : st.color;
+      ctx.fillRect(c * cellSz, r * cellSz, cellSz, cellSz);
+    }
+  }
+
+  // Grid lines
+  ctx.strokeStyle = 'rgba(30,36,53,0.9)';
+  ctx.lineWidth = 1;
+  for (let r = 0; r <= nR; r++) {
+    ctx.beginPath();
+    ctx.moveTo(0, r * cellSz); ctx.lineTo(canvas.width, r * cellSz);
+    ctx.stroke();
+  }
+  for (let c = 0; c <= nC; c++) {
+    ctx.beginPath();
+    ctx.moveTo(c * cellSz, 0); ctx.lineTo(c * cellSz, canvas.height);
+    ctx.stroke();
+  }
+
+  // Coordinate labels for larger cells
+  if (cellSz >= 32) {
+    ctx.font = `${Math.min(cellSz * 0.28, 13)}px monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    for (let r = 0; r < nR; r++) {
+      for (let c = 0; c < nC; c++) {
+        const st = chunkState[r * nC + c];
+        ctx.fillStyle = st.missing
+          ? 'rgba(148,163,184,0.4)'
+          : 'rgba(0,0,0,0.55)';
+        ctx.fillText(`${r},${c}`, c * cellSz + cellSz / 2, r * cellSz + cellSz / 2);
+      }
+    }
+  }
+}
+
+function setup2DClick() {
+  const canvas = document.getElementById('canvas2d');
+  canvas.addEventListener('click', e => {
+    const ss  = getShardShape();
+    const cps = getChunksPerShard();
+    if (validate(ss, cps).length) return;
+
+    const nR = cps[0], nC = cps[1];
+    const rect = canvas.getBoundingClientRect();
+    const cellSz = canvas.width / nC;
+    const c = Math.floor((e.clientX - rect.left)  / cellSz);
+    const r = Math.floor((e.clientY - rect.top)   / cellSz);
+    if (r < 0 || r >= nR || c < 0 || c >= nC) return;
+
+    const idx = r * nC + c;
+    chunkState[idx].missing = !chunkState[idx].missing;
+
+    draw2D(ss, cps);
+    drawByteLayout(ss, cps, innerChunkShape(ss, cps));
+    updateInfoPanel(ss, cps, innerChunkShape(ss, cps));
+  });
+}
+
+// ============================================================
+// Three.js
+// ============================================================
+function initThreeJS() {
+  const container = document.getElementById('canvas3d-container');
+  const W = container.clientWidth || 640;
+  const H = 500;
+
+  scene3d = new THREE.Scene();
+  scene3d.background = new THREE.Color(0x080b10);
+
+  camera3d = new THREE.PerspectiveCamera(45, W / H, 0.001, 100000);
+
+  renderer3d = new THREE.WebGLRenderer({ antialias: true });
+  renderer3d.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer3d.setSize(W, H);
+  container.appendChild(renderer3d.domElement);
+
+  controls3d = new OrbitControls(camera3d, renderer3d.domElement);
+  controls3d.enableDamping  = true;
+  controls3d.dampingFactor  = 0.08;
+
+  // Track mousedown for drag-vs-click detection
+  renderer3d.domElement.addEventListener('mousedown', e => {
+    mouseDownPx = { x: e.clientX, y: e.clientY };
+  });
+  renderer3d.domElement.addEventListener('click', e => {
+    if (!mouseDownPx) return;
+    const dx = e.clientX - mouseDownPx.x;
+    const dy = e.clientY - mouseDownPx.y;
+    mouseDownPx = null;
+    if (dx * dx + dy * dy > 36) return; // > 6px movement = drag, not click
+    handle3DClick(e);
+  });
+
+  window.addEventListener('resize', handleResize3D);
+  requestAnimationFrame(handleResize3D);
+}
+
+function handleResize3D() {
+  if (!renderer3d) return;
+  const container = document.getElementById('canvas3d-container');
+  const W = container.clientWidth;
+  if (W > 10) {
+    camera3d.aspect = W / 500;
+    camera3d.updateProjectionMatrix();
+    renderer3d.setSize(W, 500);
+  }
+}
+
+function startAnim3d() {
+  if (animating3d) return;
+  animating3d = true;
+  const loop = () => {
+    if (!animating3d) return;
+    animFrameId3d = requestAnimationFrame(loop);
+    controls3d.update();
+    renderer3d.render(scene3d, camera3d);
+  };
+  loop();
+}
+
+function stopAnim3d() {
+  animating3d = false;
+  if (animFrameId3d) { cancelAnimationFrame(animFrameId3d); animFrameId3d = null; }
+}
+
+function disposeAll3d() {
+  for (const obj of allObj3d) {
+    scene3d.remove(obj);
+    obj.geometry?.dispose();
+    if (Array.isArray(obj.material)) obj.material.forEach(m => m.dispose());
+    else obj.material?.dispose();
+  }
+  allObj3d.length      = 0;
+  chunkMeshList.length = 0;
+  chunkMeshMap.clear();
+}
+
+function add3d(obj) { scene3d.add(obj); allObj3d.push(obj); }
+
+function draw3DScene(ss, cps) {
+  disposeAll3d();
+
+  // Mapping: cps[0] = depth (Z), cps[1] = rows (Y), cps[2] = cols (X)
+  const nD = cps[0], nR = cps[1], nC = cps[2];
+  const S  = 10 / Math.max(nD, nR, nC);
+  const wD = nD * S, wR = nR * S, wC = nC * S;
+
+  // World coordinate helpers: centre the shard at origin
+  const ox = -wC / 2, oy = -wR / 2, oz = -wD / 2;
+  const wx = c => c * S + ox;
+  const wy = r => r * S + oy;
+  const wz = d => d * S + oz;
+
+  // Shard bounding box
+  {
+    const geo = new THREE.BoxGeometry(wC, wR, wD);
+    const edges = new THREE.EdgesGeometry(geo);
+    geo.dispose();
+    add3d(new THREE.LineSegments(edges,
+      new THREE.LineBasicMaterial({ color: 0x3b82f6, opacity: 0.45, transparent: true })
+    ));
+  }
+
+  // Axes helper at corner
+  const axesSize = Math.max(wC, wR, wD) * 0.2;
+  const axes = new THREE.AxesHelper(axesSize);
+  axes.position.set(ox, oy, oz);
+  add3d(axes);
+
+  // One mesh per chunk
+  const GAP = 0.88; // fraction of cell to fill
+
+  for (let d = 0; d < nD; d++) {
+    for (let r = 0; r < nR; r++) {
+      for (let c = 0; c < nC; c++) {
+        const idx = d * nR * nC + r * nC + c;
+        const st  = chunkState[idx] || { color: 'hsl(0,0%,50%)', missing: false };
+
+        const cx = wx(c) + S / 2;
+        const cy = wy(r) + S / 2;
+        const cz = wz(d) + S / 2;
+        const dw = S * GAP, dh = S * GAP, dd = S * GAP;
+
+        const hexColor = st.missing ? '#080b10' : hslToHex(st.color);
+        const opacity  = st.missing ? 0.12 : 0.58;
+
+        // Fill mesh
+        const geo = new THREE.BoxGeometry(dw, dh, dd);
+        const mat = new THREE.MeshBasicMaterial({
+          color:       new THREE.Color(hexColor),
+          opacity,
+          transparent: true,
+          side:        THREE.DoubleSide,
+          depthWrite:  false
+        });
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.position.set(cx, cy, cz);
+        mesh.userData.chunkIdx = idx;
+        mesh.renderOrder = 1;
+        add3d(mesh);
+        chunkMeshList.push(mesh);
+
+        // Edge lines
+        const edgeGeo = new THREE.EdgesGeometry(new THREE.BoxGeometry(dw, dh, dd));
+        const edgeMat = new THREE.LineBasicMaterial({
+          color:       st.missing ? 0x1e2435 : new THREE.Color(hexColor),
+          opacity:     st.missing ? 0.25 : 0.9,
+          transparent: true
+        });
+        const edgeMesh = new THREE.LineSegments(edgeGeo, edgeMat);
+        edgeMesh.position.set(cx, cy, cz);
+        add3d(edgeMesh);
+
+        chunkMeshMap.set(mesh, { edgeMesh, chunkIdx: idx });
+      }
+    }
+  }
+
+  // Camera position
+  const camDist = Math.max(wC, wR, wD) * 2.1;
+  camera3d.position.set(camDist * 0.82, camDist * 0.65, camDist * 1.05);
+  camera3d.lookAt(0, 0, 0);
+  camera3d.near = camDist * 0.001;
+  camera3d.far  = camDist * 60;
+  camera3d.updateProjectionMatrix();
+  controls3d.target.set(0, 0, 0);
+  controls3d.update();
+}
+
+function handle3DClick(e) {
+  if (!renderer3d || !camera3d) return;
+  const rect  = renderer3d.domElement.getBoundingClientRect();
+  const mouse = new THREE.Vector2(
+    ((e.clientX - rect.left) / rect.width)  *  2 - 1,
+    ((e.clientY - rect.top)  / rect.height) * -2 + 1
+  );
+  const raycaster = new THREE.Raycaster();
+  raycaster.setFromCamera(mouse, camera3d);
+
+  const hits = raycaster.intersectObjects(chunkMeshList);
+  if (!hits.length) return;
+
+  const fillMesh = hits[0].object;
+  const info = chunkMeshMap.get(fillMesh);
+  if (!info) return;
+
+  const { edgeMesh, chunkIdx } = info;
+  chunkState[chunkIdx].missing = !chunkState[chunkIdx].missing;
+  const st = chunkState[chunkIdx];
+
+  const hexColor = st.missing ? '#080b10' : hslToHex(st.color);
+  const opacity  = st.missing ? 0.12 : 0.58;
+
+  fillMesh.material.color.set(hexColor);
+  fillMesh.material.opacity = opacity;
+  edgeMesh.material.color.set(st.missing ? 0x1e2435 : new THREE.Color(hexColor));
+  edgeMesh.material.opacity = st.missing ? 0.25 : 0.9;
+
+  const ss  = getShardShape();
+  const cps = getChunksPerShard();
+  const ics = innerChunkShape(ss, cps);
+  drawByteLayout(ss, cps, ics);
+  updateInfoPanel(ss, cps, ics);
+}
+
+function resetCamera3D() {
+  if (!camera3d || !controls3d) return;
+  const cps = getChunksPerShard();
+  const nD  = dims === 3 ? cps[0] : 1;
+  const nR  = dims === 3 ? cps[1] : cps[0];
+  const nC  = dims === 3 ? cps[2] : cps[1];
+  const S   = 10 / Math.max(nD, nR, nC);
+  const camDist = Math.max(nD, nR, nC) * S * 2.1;
+  camera3d.position.set(camDist * 0.82, camDist * 0.65, camDist * 1.05);
+  controls3d.target.set(0, 0, 0);
+  controls3d.update();
+}
+
+// ============================================================
+// Byte layout canvas
+// ============================================================
+function drawByteLayout(ss, cps, ics) {
+  const canvas = document.getElementById('byte-layout-canvas');
+  const W = canvas.parentElement.clientWidth || 640;
+  canvas.width = W;
+  const H = 70;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+
+  const totalChunks       = prodArr(cps);
+  const indexSizeBytes    = 16 * totalChunks + 4;  // 16 B/entry + CRC32c
+  const uncompChunkBytes  = prodArr(ics) * BYTES_PER_ELEMENT;
+
+  // Compute sizes for present chunks (C-order)
+  const presentInfos = [];
+  for (let i = 0; i < totalChunks; i++) {
+    const st = chunkState[i];
+    if (!st.missing) {
+      presentInfos.push({
+        idx:   i,
+        color: st.color,
+        bytes: Math.max(1, Math.round(st.sizeFactor * uncompChunkBytes))
+      });
+    }
+  }
+
+  const dataSizeBytes = presentInfos.reduce((s, p) => s + p.bytes, 0);
+  const totalSizeBytes = indexSizeBytes + dataSizeBytes;
+
+  byteLayoutSegs = [];
+
+  if (totalSizeBytes === 0) {
+    // Degenerate: nothing to draw
+    document.getElementById('stats-row').innerHTML = '';
+    return;
+  }
+
+  const toW = bytes => Math.max(1, (bytes / totalSizeBytes) * W);
+
+  let x = 0;
+
+  const pushSeg = (bytes, color, type, chunkIdx) => {
+    const pw = toW(bytes);
+    // Draw
+    ctx.fillStyle = color;
+    const margin = 3;
+    ctx.fillRect(x, margin, pw - 1, H - margin * 2);
+    // Store for hover
+    byteLayoutSegs.push({ px0: x, px1: x + pw, type, chunkIdx, color, bytes });
+    x += pw;
+  };
+
+  if (indexLocation === 'start') {
+    pushSeg(indexSizeBytes, '#c8d6e5', 'index', -1);
+  }
+
+  for (const p of presentInfos) {
+    pushSeg(p.bytes, p.color, 'chunk', p.idx);
+  }
+
+  if (indexLocation === 'end') {
+    pushSeg(indexSizeBytes, '#c8d6e5', 'index', -1);
+  }
+
+  // Hairline border
+  ctx.strokeStyle = '#2d3748';
+  ctx.lineWidth   = 1;
+  ctx.strokeRect(0.5, 2.5, W - 1, H - 6);
+
+  // Stats
+  document.getElementById('stats-row').innerHTML = `
+    <div class="stat-item">
+      <div class="stat-label">Total shard file size</div>
+      <div class="stat-value">${fmtBytes(totalSizeBytes)}</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-label">Index size</div>
+      <div class="stat-value">${fmtBytes(indexSizeBytes)}</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-label">Present / total chunks</div>
+      <div class="stat-value">${presentInfos.length} / ${totalChunks}</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-label">Data bytes (compressed)</div>
+      <div class="stat-value">${fmtBytes(dataSizeBytes)}</div>
+    </div>
+  `;
+}
+
+function setupByteLayoutHover() {
+  const canvas  = document.getElementById('byte-layout-canvas');
+  const tooltip = document.getElementById('tooltip');
+
+  canvas.addEventListener('mousemove', e => {
+    const rect = canvas.getBoundingClientRect();
+    // Scale mouse x to canvas pixel coords
+    const mx = (e.clientX - rect.left) * (canvas.width / rect.width);
+
+    const seg = byteLayoutSegs.find(s => mx >= s.px0 && mx < s.px1);
+    if (!seg) { tooltip.style.display = 'none'; return; }
+
+    let text;
+    if (seg.type === 'index') {
+      text = `Shard index — ${fmtBytes(seg.bytes)} (${(16 * prodArr(getChunksPerShard()))} × 16 B + 4 B CRC32c)`;
+    } else {
+      const cps    = getChunksPerShard();
+      const coords = linToCoords(seg.chunkIdx, cps);
+      text = `Chunk [${coords.join(', ')}] — ${fmtBytes(seg.bytes)} compressed`;
+    }
+
+    tooltip.textContent    = text;
+    tooltip.style.display  = 'block';
+    tooltip.style.left     = (e.clientX + 14) + 'px';
+    tooltip.style.top      = (e.clientY - 34) + 'px';
+  });
+
+  canvas.addEventListener('mouseleave', () => { tooltip.style.display = 'none'; });
+}
+
+// ============================================================
+// Info panel
+// ============================================================
+function updateInfoPanel(ss, cps, ics) {
+  const totalChunks      = prodArr(cps);
+  const indexSizeBytes   = 16 * totalChunks + 4;
+  const uncompChunkBytes = prodArr(ics) * BYTES_PER_ELEMENT;
+
+  const rows = [
+    ['Shard shape',                    '[' + ss.join(' × ')  + ']'],
+    ['Inner chunk shape (computed)',   '[' + ics.join(' × ') + ']'],
+    ['Chunks per shard (per dim)',     '[' + cps.join(' × ') + ']'],
+    ['Chunks per shard (total)',       totalChunks.toLocaleString()],
+    ['Index size',                     fmtBytes(indexSizeBytes) + ' (' + indexSizeBytes.toLocaleString() + ' bytes)'],
+    ['Uncompressed chunk size',        fmtBytes(uncompChunkBytes)],
+  ];
+
+  document.getElementById('shard-details').innerHTML = rows.map(([k, v]) =>
+    `<div class="info-row"><span class="k">${k}</span><span class="v">${v}</span></div>`
+  ).join('');
+}
+
+// ============================================================
+// Global event handlers (called from HTML onclick)
+// ============================================================
+window.setDims = function(d) {
+  dims = d;
+  document.getElementById('btn2d').classList.toggle('active', d === 2);
+  document.getElementById('btn3d').classList.toggle('active', d === 3);
+  document.getElementById('viz-2d').style.display = d === 2 ? 'block' : 'none';
+  document.getElementById('viz-3d').style.display = d === 3 ? 'block' : 'none';
+  if (d === 2) stopAnim3d();
+  prevShardKey = ''; // force reinit
+  buildFields();
+  update();
+  if (d === 3 && renderer3d) requestAnimationFrame(handleResize3D);
+};
+
+window.setIndexLocation = function(loc) {
+  indexLocation = loc;
+  document.getElementById('btnIdxStart').classList.toggle('active', loc === 'start');
+  document.getElementById('btnIdxEnd').classList.toggle('active', loc === 'end');
+  const ss  = getShardShape();
+  const cps = getChunksPerShard();
+  if (!validate(ss, cps).length) {
+    drawByteLayout(ss, cps, innerChunkShape(ss, cps));
+  }
+};
+
+window.update       = update;
+window.resetCamera3D = resetCamera3D;
+
+// ============================================================
+// Boot
+// ============================================================
+buildFields();
+setup2DClick();
+setupByteLayoutHover();
+update();
+</script>
+</body>
+</html>

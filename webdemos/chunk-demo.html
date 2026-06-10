@@ -1,0 +1,879 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Zarr Chunk Explorer</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0f1117; color: #e2e8f0; min-height: 100vh; }
+
+  .header { padding: 24px 32px; border-bottom: 1px solid #1e2435; background: #131720; }
+  .header h1 { font-size: 1.5rem; font-weight: 600; color: #7dd3fc; }
+  .header p { color: #94a3b8; font-size: 0.875rem; margin-top: 4px; }
+
+  .layout { display: grid; grid-template-columns: 340px 1fr; gap: 0; min-height: calc(100vh - 73px); }
+
+  .sidebar { background: #131720; border-right: 1px solid #1e2435; padding: 24px; overflow-y: auto; }
+  .main { padding: 24px; overflow-y: auto; }
+
+  .section { margin-bottom: 24px; }
+  .section-title { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; color: #64748b; margin-bottom: 12px; }
+
+  .field { margin-bottom: 12px; }
+  .field label { display: block; font-size: 0.8rem; color: #94a3b8; margin-bottom: 4px; }
+  .field input, .field select {
+    width: 100%; padding: 7px 10px; background: #1e2435; border: 1px solid #2d3748;
+    border-radius: 6px; color: #e2e8f0; font-size: 0.85rem; outline: none;
+    transition: border-color 0.15s;
+  }
+  .field input:focus, .field select:focus { border-color: #3b82f6; }
+
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+
+  .toggle-group { display: flex; gap: 4px; }
+  .toggle-btn {
+    flex: 1; padding: 7px; background: #1e2435; border: 1px solid #2d3748;
+    border-radius: 6px; color: #94a3b8; font-size: 0.82rem; cursor: pointer;
+    transition: all 0.15s; text-align: center;
+  }
+  .toggle-btn.active { background: #1d4ed8; border-color: #3b82f6; color: #fff; }
+  .toggle-btn:hover:not(.active) { border-color: #4b5563; color: #e2e8f0; }
+
+  .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 24px; }
+  .stat-card {
+    background: #131720; border: 1px solid #1e2435; border-radius: 10px;
+    padding: 16px; text-align: center;
+  }
+  .stat-card .value { font-size: 1.8rem; font-weight: 700; color: #7dd3fc; }
+  .stat-card .label { font-size: 0.75rem; color: #64748b; margin-top: 2px; }
+  .stat-card.highlight .value { color: #34d399; }
+  .stat-card.warning .value { color: #f59e0b; }
+
+  .canvas-container { position: relative; }
+  canvas { display: block; border-radius: 8px; cursor: crosshair; }
+
+  #canvas3d-container { width: 100%; height: 500px; border-radius: 8px; overflow: hidden; background: #0f1117; }
+
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 12px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 0.78rem; color: #94a3b8; }
+  .legend-swatch { width: 14px; height: 14px; border-radius: 3px; border: 1px solid rgba(255,255,255,0.1); flex-shrink: 0; }
+
+  .info-panel {
+    background: #131720; border: 1px solid #1e2435; border-radius: 10px;
+    padding: 16px; margin-top: 16px; font-size: 0.82rem;
+  }
+  .info-panel h3 { color: #7dd3fc; margin-bottom: 8px; font-size: 0.88rem; }
+  .info-row { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #1e2435; }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .k { color: #94a3b8; }
+  .info-row .v { color: #e2e8f0; font-weight: 500; }
+
+  .viz-hint { font-size: 0.82rem; color: #64748b; }
+  .viz-topbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+
+  .btn-small {
+    padding: 5px 11px; border-radius: 6px; border: 1px solid #2d3748;
+    background: #1e2435; color: #94a3b8; font-size: 0.78rem; cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn-small:hover { border-color: #4b5563; color: #e2e8f0; }
+
+  .error-msg { color: #f87171; font-size: 0.8rem; padding: 4px 0; }
+
+  .dual-range { position: relative; height: 22px; margin-bottom: 6px; }
+  .dual-range .range-track {
+    position: absolute; left: 0; right: 0; top: 50%;
+    height: 4px; background: #2d3748; border-radius: 2px;
+    transform: translateY(-50%); pointer-events: none;
+  }
+  .dual-range .range-fill {
+    position: absolute; top: 0; height: 100%;
+    background: #3b82f6; border-radius: 2px; pointer-events: none;
+  }
+  .dual-range input[type=range] {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    background: transparent; -webkit-appearance: none; appearance: none;
+    pointer-events: none; margin: 0; padding: 0;
+  }
+  .dual-range input[type=range]::-webkit-slider-runnable-track { background: transparent; height: 4px; }
+  .dual-range input[type=range]::-moz-range-track { background: transparent; height: 4px; border: none; }
+  .dual-range input[type=range]::-moz-range-progress { background: transparent; }
+  .dual-range input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%;
+    background: #3b82f6; border: 2px solid #0f1117; cursor: pointer;
+    pointer-events: all; margin-top: -6px;
+  }
+  .dual-range input[type=range]::-moz-range-thumb {
+    width: 16px; height: 16px; border-radius: 50%;
+    background: #3b82f6; border: 2px solid #0f1117; cursor: pointer;
+    pointer-events: all; box-sizing: border-box;
+  }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<div class="header">
+  <h1>Zarr Chunk Explorer</h1>
+  <p>Visualize chunked array storage and understand I/O costs for region-of-interest access</p>
+</div>
+<div class="layout">
+  <div class="sidebar">
+    <div class="section">
+      <div class="section-title">Dimensions</div>
+      <div class="field">
+        <div class="toggle-group">
+          <button class="toggle-btn active" id="btn2d" onclick="window.setDims(2)">2D</button>
+          <button class="toggle-btn" id="btn3d" onclick="window.setDims(3)">3D</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Array Shape</div>
+      <div id="array-shape-fields"></div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Chunk Shape</div>
+      <div id="chunk-shape-fields"></div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Data Type</div>
+      <div class="field">
+        <select id="dtype" onchange="window.update()">
+          <option value="1">uint8 (1 byte)</option>
+          <option value="2">int16 / uint16 (2 bytes)</option>
+          <option value="4" selected>float32 / int32 (4 bytes)</option>
+          <option value="8">float64 / int64 (8 bytes)</option>
+          <option value="16">complex128 (16 bytes)</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Region of Interest</div>
+      <div id="roi-fields"></div>
+    </div>
+
+    <div id="error-area"></div>
+  </div>
+
+  <div class="main">
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="value" id="stat-total-chunks">—</div>
+        <div class="label">Total chunks in array</div>
+      </div>
+      <div class="stat-card highlight">
+        <div class="value" id="stat-roi-chunks">—</div>
+        <div class="label">Chunks to load for ROI</div>
+      </div>
+      <div class="stat-card warning">
+        <div class="value" id="stat-bytes">—</div>
+        <div class="label">Bytes to load (uncompressed)</div>
+      </div>
+      <div class="stat-card">
+        <div class="value" id="stat-efficiency">—</div>
+        <div class="label">ROI data utilization</div>
+      </div>
+    </div>
+
+    <!-- 2D visualization -->
+    <div id="viz-2d" style="display:block">
+      <div class="viz-topbar">
+        <span class="viz-hint">Click and drag on the canvas to set region of interest</span>
+      </div>
+      <div class="canvas-container">
+        <canvas id="canvas2d"></canvas>
+      </div>
+      <div class="legend">
+        <div class="legend-item"><div class="legend-swatch" style="background:#1e3a5f"></div>Array cells</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:#111827;border-color:#2a3545"></div>Chunk padding</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:rgba(59,130,246,0.25);border-color:#3b82f6"></div>Chunk grid</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:rgba(52,211,153,0.5)"></div>Loaded chunks</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:rgba(99,102,241,0.4)"></div>ROI</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:transparent;border:2px solid #f59e0b"></div>Array boundary</div>
+      </div>
+    </div>
+
+    <!-- 3D visualization -->
+    <div id="viz-3d" style="display:none">
+      <div class="viz-topbar">
+        <span class="viz-hint">Left-drag to rotate &middot; Scroll to zoom &middot; Right-drag to pan</span>
+        <button class="btn-small" onclick="window.resetCamera3D()">Reset view</button>
+      </div>
+      <div id="canvas3d-container"></div>
+      <div class="legend">
+        <div class="legend-item"><div class="legend-swatch" style="background:transparent;border:2px solid #3b82f6"></div>Array bounds</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:rgba(30,58,138,0.5);border-color:#1e40af"></div>Chunk grid</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:rgba(52,211,153,0.4)"></div>Loaded chunks</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:rgba(99,102,241,0.5)"></div>ROI</div>
+        <div class="legend-item" style="font-size:0.75rem;color:#64748b;">Axes: <span style="color:#ef4444">X</span> <span style="color:#22c55e">Y</span> <span style="color:#3b82f6">Z</span></div>
+      </div>
+      <div id="chunk-count-note" style="font-size:0.78rem;color:#94a3b8;margin-top:6px;"></div>
+    </div>
+
+    <div class="info-panel">
+      <h3>Chunk Details</h3>
+      <div id="chunk-details"></div>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// ---- Global state ----
+let dims = 2;
+let isDragging = false;
+let dragStart = null;
+
+const MAX_DISPLAY = 120;
+const CANVAS_MAX = 700;
+
+// Three.js
+let scene3d = null, camera3d = null, renderer3d = null, controls3d = null;
+const objects3d = [];
+let animating3d = false;
+let animFrameId3d = null;
+
+// ---- Utility ----
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+function fmtBytes(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1024 * 1024) return (b / 1024).toFixed(1) + ' KB';
+  if (b < 1024 ** 3) return (b / 1024 / 1024).toFixed(2) + ' MB';
+  return (b / 1024 ** 3).toFixed(2) + ' GB';
+}
+
+function getVal(id, def) {
+  const el = document.getElementById(id);
+  if (!el) return def;
+  const v = parseInt(el.value);
+  return isNaN(v) || v < 0 ? def : v;
+}
+
+function getArrayShape() {
+  if (dims === 2) return [getVal('as0', 64), getVal('as1', 64)];
+  return [getVal('as0', 64), getVal('as1', 64), getVal('as2', 64)];
+}
+
+function getChunkShape() {
+  if (dims === 2) return [getVal('cs0', 32), getVal('cs1', 32)];
+  return [getVal('cs0', 16), getVal('cs1', 16), getVal('cs2', 16)];
+}
+
+function getRoi() {
+  if (dims === 2) {
+    return [[getVal('r0s', 16), getVal('r0e', 80)], [getVal('r1s', 16), getVal('r1e', 80)]];
+  }
+  return [
+    [getVal('r0s', 8), getVal('r0e', 40)],
+    [getVal('r1s', 8), getVal('r1e', 40)],
+    [getVal('r2s', 8), getVal('r2e', 40)],
+  ];
+}
+
+function chunksForDim(start, end, chunkSize) {
+  const first = Math.floor(start / chunkSize);
+  const last = Math.ceil(end / chunkSize) - 1;
+  return { first, last, count: last - first + 1 };
+}
+
+function validate(shape, chunks, roi) {
+  const errs = [];
+  for (let i = 0; i < dims; i++) {
+    if (roi[i][0] >= roi[i][1]) errs.push(`ROI dim ${i}: start must be < end`);
+    if (roi[i][0] < 0) errs.push(`ROI dim ${i}: start must be ≥ 0`);
+    if (roi[i][1] > shape[i]) errs.push(`ROI dim ${i}: end (${roi[i][1]}) > array size (${shape[i]})`);
+  }
+  return errs;
+}
+
+function computeStats(shape, chunks, roi, dtype) {
+  const totalChunks = shape.reduce((acc, s, i) => acc * Math.ceil(s / chunks[i]), 1);
+  let roiChunks = 1;
+  for (let i = 0; i < dims; i++) roiChunks *= chunksForDim(roi[i][0], roi[i][1], chunks[i]).count;
+  const chunkBytes = chunks.reduce((a, b) => a * b, 1) * dtype;
+  const totalBytes = roiChunks * chunkBytes;
+  const roiCells = roi.reduce((a, r) => a * (r[1] - r[0]), 1);
+  const loadedCells = roiChunks * chunks.reduce((a, b) => a * b, 1);
+  const efficiency = loadedCells > 0 ? (roiCells / loadedCells * 100).toFixed(1) : 0;
+  return { totalChunks, roiChunks, totalBytes, efficiency };
+}
+
+// ---- Build input fields ----
+function buildFields() {
+  const dimLabels = dims === 2 ? ['Y', 'X'] : ['Z', 'Y', 'X'];
+  const arrayDefs = dims === 2 ? [128, 128] : [64, 64, 64];
+  const chunkDefs = dims === 2 ? [32, 32] : [16, 16, 16];
+  const roiDefs  = dims === 2 ? [[16,80],[16,80]] : [[8,40],[8,40],[8,40]];
+
+  let asHtml, csHtml, roiHtml;
+  if (dims === 2) {
+    asHtml = `<div class="row">
+      <div class="field"><label>${dimLabels[0]}</label><input type="number" id="as0" value="${arrayDefs[0]}" min="1" max="4096" oninput="window.update()"></div>
+      <div class="field"><label>${dimLabels[1]}</label><input type="number" id="as1" value="${arrayDefs[1]}" min="1" max="4096" oninput="window.update()"></div>
+    </div>`;
+    csHtml = `<div class="row">
+      <div class="field"><label>${dimLabels[0]}</label><input type="number" id="cs0" value="${chunkDefs[0]}" min="1" oninput="window.update()"></div>
+      <div class="field"><label>${dimLabels[1]}</label><input type="number" id="cs1" value="${chunkDefs[1]}" min="1" oninput="window.update()"></div>
+    </div>`;
+    roiHtml = dimLabels.map((l, i) => `
+      <div class="field"><label>${l}: [min, max)</label>
+        <div class="dual-range">
+          <div class="range-track"><div class="range-fill" id="rf${i}"></div></div>
+          <input type="range" id="r${i}s-slider" min="0" max="${arrayDefs[i]}" value="${roiDefs[i][0]}" oninput="window.onMinSlider(${i})">
+          <input type="range" id="r${i}e-slider" min="0" max="${arrayDefs[i]}" value="${roiDefs[i][1]}" oninput="window.onMaxSlider(${i})">
+        </div>
+        <div class="row">
+          <input type="number" id="r${i}s" value="${roiDefs[i][0]}" min="0" oninput="window.onRoiNumber(${i})">
+          <input type="number" id="r${i}e" value="${roiDefs[i][1]}" min="1" oninput="window.onRoiNumber(${i})">
+        </div></div>`).join('');
+  } else {
+    asHtml = `<div class="row3">${dimLabels.map((l,i) =>
+      `<div class="field"><label>${l}</label><input type="number" id="as${i}" value="${arrayDefs[i]}" min="1" max="4096" oninput="window.update()"></div>`
+    ).join('')}</div>`;
+    csHtml = `<div class="row3">${dimLabels.map((l,i) =>
+      `<div class="field"><label>${l}</label><input type="number" id="cs${i}" value="${chunkDefs[i]}" min="1" oninput="window.update()"></div>`
+    ).join('')}</div>`;
+    roiHtml = dimLabels.map((l, i) => `
+      <div class="field"><label>${l}: [min, max)</label>
+        <div class="dual-range">
+          <div class="range-track"><div class="range-fill" id="rf${i}"></div></div>
+          <input type="range" id="r${i}s-slider" min="0" max="${arrayDefs[i]}" value="${roiDefs[i][0]}" oninput="window.onMinSlider(${i})">
+          <input type="range" id="r${i}e-slider" min="0" max="${arrayDefs[i]}" value="${roiDefs[i][1]}" oninput="window.onMaxSlider(${i})">
+        </div>
+        <div class="row">
+          <input type="number" id="r${i}s" value="${roiDefs[i][0]}" min="0" oninput="window.onRoiNumber(${i})">
+          <input type="number" id="r${i}e" value="${roiDefs[i][1]}" min="1" oninput="window.onRoiNumber(${i})">
+        </div></div>`).join('');
+  }
+
+  document.getElementById('array-shape-fields').innerHTML = asHtml;
+  document.getElementById('chunk-shape-fields').innerHTML = csHtml;
+  document.getElementById('roi-fields').innerHTML = roiHtml;
+}
+
+// ---- Dual-range slider helpers ----
+function updateSliderFill(i) {
+  const fill = document.getElementById(`rf${i}`);
+  const loEl = document.getElementById(`r${i}s-slider`);
+  const hiEl = document.getElementById(`r${i}e-slider`);
+  if (!fill || !loEl || !hiEl) return;
+  const max = parseFloat(loEl.max) || 1;
+  const lo = parseFloat(loEl.value) || 0;
+  const hi = parseFloat(hiEl.value) || max;
+  fill.style.left = (lo / max * 100).toFixed(2) + '%';
+  fill.style.width = Math.max(0, (hi - lo) / max * 100).toFixed(2) + '%';
+}
+
+function syncSliders() {
+  const shape = getArrayShape();
+  for (let i = 0; i < dims; i++) {
+    const sSlider = document.getElementById(`r${i}s-slider`);
+    const eSlider = document.getElementById(`r${i}e-slider`);
+    const sNum = document.getElementById(`r${i}s`);
+    const eNum = document.getElementById(`r${i}e`);
+    if (!sSlider || !eSlider) continue;
+    sSlider.max = shape[i];
+    eSlider.max = shape[i];
+    if (sNum) sSlider.value = sNum.value;
+    if (eNum) eSlider.value = eNum.value;
+    updateSliderFill(i);
+  }
+}
+
+function onMinSlider(i) {
+  const sSlider = document.getElementById(`r${i}s-slider`);
+  const eSlider = document.getElementById(`r${i}e-slider`);
+  const sNum = document.getElementById(`r${i}s`);
+  if (!sSlider || !eSlider) return;
+  let lo = parseInt(sSlider.value);
+  const hi = parseInt(eSlider.value);
+  if (lo >= hi) { lo = hi - 1; sSlider.value = lo; }
+  if (sNum) sNum.value = lo;
+  updateSliderFill(i);
+  update();
+}
+
+function onMaxSlider(i) {
+  const sSlider = document.getElementById(`r${i}s-slider`);
+  const eSlider = document.getElementById(`r${i}e-slider`);
+  const eNum = document.getElementById(`r${i}e`);
+  if (!sSlider || !eSlider) return;
+  const lo = parseInt(sSlider.value);
+  let hi = parseInt(eSlider.value);
+  if (hi <= lo) { hi = lo + 1; eSlider.value = hi; }
+  if (eNum) eNum.value = hi;
+  updateSliderFill(i);
+  update();
+}
+
+function onRoiNumber(i) {
+  const sSlider = document.getElementById(`r${i}s-slider`);
+  const eSlider = document.getElementById(`r${i}e-slider`);
+  const sNum = document.getElementById(`r${i}s`);
+  const eNum = document.getElementById(`r${i}e`);
+  if (sSlider && sNum) sSlider.value = sNum.value;
+  if (eSlider && eNum) eSlider.value = eNum.value;
+  updateSliderFill(i);
+  update();
+}
+
+// ---- Main update ----
+function update() {
+  syncSliders();
+  const shape = getArrayShape();
+  const chunks = getChunkShape();
+  const roi = getRoi();
+  const dtype = parseInt(document.getElementById('dtype').value);
+  const errs = validate(shape, chunks, roi);
+  const errArea = document.getElementById('error-area');
+
+  if (errs.length) {
+    errArea.innerHTML = errs.map(e => `<div class="error-msg">⚠ ${e}</div>`).join('');
+    return;
+  }
+  errArea.innerHTML = '';
+
+  const stats = computeStats(shape, chunks, roi, dtype);
+  document.getElementById('stat-total-chunks').textContent = stats.totalChunks.toLocaleString();
+  document.getElementById('stat-roi-chunks').textContent = stats.roiChunks.toLocaleString();
+  document.getElementById('stat-bytes').textContent = fmtBytes(stats.totalBytes);
+  document.getElementById('stat-efficiency').textContent = stats.efficiency + '%';
+
+  if (dims === 2) {
+    draw2D(shape, chunks, roi);
+  } else {
+    if (!renderer3d) initThreeJS();
+    if (!animating3d) startAnimation3d();
+    draw3DScene(shape, chunks, roi);
+  }
+
+  buildChunkDetails(shape, chunks, roi, dtype, stats);
+}
+
+// ---- 2D Canvas ----
+function computeCanvasSize(nrows, ncols, chunkRows, chunkCols) {
+  const gridRows = Math.ceil(nrows / chunkRows) * chunkRows;
+  const gridCols = Math.ceil(ncols / chunkCols) * chunkCols;
+  const displayRows = Math.min(gridRows, MAX_DISPLAY);
+  const displayCols = Math.min(gridCols, MAX_DISPLAY);
+  const cellSize = Math.max(Math.floor(Math.min(CANVAS_MAX / Math.max(displayRows, displayCols), 20)), 3);
+  const scaleR = displayRows / gridRows;
+  const scaleC = displayCols / gridCols;
+  return { cellSize, displayRows, displayCols, gridRows, gridCols, scaleR, scaleC };
+}
+
+function draw2D(shape, chunks, roi) {
+  const canvas = document.getElementById('canvas2d');
+  const nrows = shape[0], ncols = shape[1];
+  const chunkRows = chunks[0], chunkCols = chunks[1];
+  const { cellSize, displayRows, displayCols, gridRows, gridCols, scaleR, scaleC } =
+    computeCanvasSize(nrows, ncols, chunkRows, chunkCols);
+
+  canvas.width = displayCols * cellSize;
+  canvas.height = displayRows * cellSize;
+  const ctx = canvas.getContext('2d');
+
+  const px = c => c * scaleC * cellSize;
+  const py = r => r * scaleR * cellSize;
+
+  // 1. Padding area (chunk cells that extend beyond array boundary)
+  ctx.fillStyle = '#111827';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // 2. Array data area
+  ctx.fillStyle = '#1e3a5f';
+  ctx.fillRect(0, 0, px(ncols), py(nrows));
+
+  // 3. Loaded chunk highlights — full chunks, extending into padding where applicable
+  const cr = chunksForDim(roi[0][0], roi[0][1], chunkRows);
+  const cc = chunksForDim(roi[1][0], roi[1][1], chunkCols);
+  ctx.fillStyle = 'rgba(52,211,153,0.35)';
+  for (let ci = cr.first; ci <= cr.last; ci++) {
+    for (let cj = cc.first; cj <= cc.last; cj++) {
+      ctx.fillRect(px(cj * chunkCols), py(ci * chunkRows), px(chunkCols), py(chunkRows));
+    }
+  }
+
+  // 4. ROI
+  ctx.fillStyle = 'rgba(99,102,241,0.5)';
+  ctx.fillRect(px(roi[1][0]), py(roi[0][0]), px(roi[1][1] - roi[1][0]), py(roi[0][1] - roi[0][0]));
+
+  // 5. Cell grid lines (only when individual cells are large enough to see)
+  const effCell = Math.min(scaleR, scaleC) * cellSize;
+  if (effCell >= 6) {
+    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+    ctx.lineWidth = 0.5;
+    for (let r = 0; r <= gridRows; r++) {
+      const y = py(r);
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+    }
+    for (let c = 0; c <= gridCols; c++) {
+      const x = px(c);
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+    }
+  }
+
+  // 6. Chunk grid lines (span full chunk grid including padding)
+  ctx.strokeStyle = 'rgba(59,130,246,0.6)';
+  ctx.lineWidth = effCell > 6 ? 1.5 : 0.8;
+  const numCR = Math.ceil(nrows / chunkRows), numCC = Math.ceil(ncols / chunkCols);
+  for (let ci = 0; ci <= numCR; ci++) {
+    const y = py(ci * chunkRows);
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+  }
+  for (let cj = 0; cj <= numCC; cj++) {
+    const x = px(cj * chunkCols);
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+  }
+
+  // 7. Array boundary — amber line shows where the actual data ends
+  ctx.strokeStyle = '#f59e0b';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(0, 0, px(ncols), py(nrows));
+
+  // 8. ROI border
+  ctx.strokeStyle = '#818cf8';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(px(roi[1][0]), py(roi[0][0]), px(roi[1][1] - roi[1][0]), py(roi[0][1] - roi[0][0]));
+
+  // 9. Truncation notice
+  if (gridRows > MAX_DISPLAY || gridCols > MAX_DISPLAY) {
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(0, canvas.height - 20, canvas.width, 20);
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '11px sans-serif';
+    ctx.fillText(`Showing first ${displayRows}×${displayCols} of ${gridRows}×${gridCols} grid cells`, 6, canvas.height - 5);
+  }
+}
+
+// ---- Three.js 3D Scene ----
+function initThreeJS() {
+  const container = document.getElementById('canvas3d-container');
+  const W = 700, H = 500;
+
+  scene3d = new THREE.Scene();
+  scene3d.background = new THREE.Color(0x0f1117);
+
+  camera3d = new THREE.PerspectiveCamera(45, W / H, 0.001, 100000);
+
+  renderer3d = new THREE.WebGLRenderer({ antialias: true });
+  renderer3d.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer3d.setSize(W, H);
+  container.appendChild(renderer3d.domElement);
+
+  controls3d = new OrbitControls(camera3d, renderer3d.domElement);
+  controls3d.enableDamping = true;
+  controls3d.dampingFactor = 0.08;
+
+  window.addEventListener('resize', handleResize3D);
+  startAnimation3d();
+  // Fix canvas size after browser has laid out the revealed div
+  requestAnimationFrame(handleResize3D);
+}
+
+function handleResize3D() {
+  if (!renderer3d) return;
+  const container = document.getElementById('canvas3d-container');
+  const W = container.clientWidth;
+  const H = container.clientHeight || 500;
+  if (W > 10) {
+    camera3d.aspect = W / H;
+    camera3d.updateProjectionMatrix();
+    renderer3d.setSize(W, H);
+  }
+}
+
+function startAnimation3d() {
+  if (animating3d) return;
+  animating3d = true;
+  const loop = () => {
+    if (!animating3d) return;
+    animFrameId3d = requestAnimationFrame(loop);
+    controls3d.update();
+    renderer3d.render(scene3d, camera3d);
+  };
+  loop();
+}
+
+function stopAnimation3d() {
+  animating3d = false;
+  if (animFrameId3d) { cancelAnimationFrame(animFrameId3d); animFrameId3d = null; }
+}
+
+function dispose3d() {
+  for (const obj of objects3d) {
+    scene3d.remove(obj);
+    obj.geometry?.dispose();
+    if (Array.isArray(obj.material)) obj.material.forEach(m => m.dispose());
+    else obj.material?.dispose();
+  }
+  objects3d.length = 0;
+}
+
+function add3d(obj) { scene3d.add(obj); objects3d.push(obj); }
+
+function draw3DScene(shape, chunks, roi) {
+  dispose3d();
+
+  // zarr convention: shape = [nz, ny, nx], chunks = [cz, cy, cx]
+  // Three.js mapping: zarr X (cols) → Three X, zarr Y (rows) → Three Y, zarr Z (depth) → Three Z
+  const [nz, ny, nx] = shape;
+  const [cz, cy, cx] = chunks;
+
+  const S = 10 / Math.max(nx, ny, nz);
+  const W = nx * S, H = ny * S, D = nz * S;
+  const ox = -W / 2, oy = -H / 2, oz = -D / 2;
+
+  const wx = x => x * S + ox;
+  const wy = y => y * S + oy;
+  const wz = z => z * S + oz;
+
+  // ---- Array bounding box ----
+  {
+    const geo = new THREE.BoxGeometry(W, H, D);
+    const edges = new THREE.EdgesGeometry(geo);
+    geo.dispose();
+    add3d(new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x3b82f6 })));
+  }
+
+  // ---- Axes helper at array origin corner ----
+  const axesSize = Math.max(W, H, D) * 0.18;
+  const axes = new THREE.AxesHelper(axesSize);
+  axes.position.set(ox, oy, oz);
+  add3d(axes);
+
+  // ---- Chunk boundary planes (as rectangle outlines) ----
+  const MAX_GRID = 20;
+  const getBounds = (n, c) => {
+    const nc = Math.ceil(n / c);
+    return nc <= MAX_GRID
+      ? Array.from({ length: nc + 1 }, (_, i) => Math.min(i * c, n))
+      : [0, n];
+  };
+
+  const xBounds = getBounds(nx, cx);
+  const yBounds = getBounds(ny, cy);
+  const zBounds = getBounds(nz, cz);
+
+  const gridPts = [];
+  const addRect = (p0, p1, p2, p3) => { gridPts.push(p0, p1, p1, p2, p2, p3, p3, p0); };
+
+  for (const xv of xBounds) {
+    addRect(new THREE.Vector3(wx(xv), wy(0), wz(0)), new THREE.Vector3(wx(xv), wy(ny), wz(0)),
+            new THREE.Vector3(wx(xv), wy(ny), wz(nz)), new THREE.Vector3(wx(xv), wy(0), wz(nz)));
+  }
+  for (const yv of yBounds) {
+    addRect(new THREE.Vector3(wx(0), wy(yv), wz(0)), new THREE.Vector3(wx(nx), wy(yv), wz(0)),
+            new THREE.Vector3(wx(nx), wy(yv), wz(nz)), new THREE.Vector3(wx(0), wy(yv), wz(nz)));
+  }
+  for (const zv of zBounds) {
+    addRect(new THREE.Vector3(wx(0), wy(0), wz(zv)), new THREE.Vector3(wx(nx), wy(0), wz(zv)),
+            new THREE.Vector3(wx(nx), wy(ny), wz(zv)), new THREE.Vector3(wx(0), wy(ny), wz(zv)));
+  }
+
+  const gridGeo = new THREE.BufferGeometry().setFromPoints(gridPts);
+  add3d(new THREE.LineSegments(gridGeo, new THREE.LineBasicMaterial({ color: 0x1e3a8a, opacity: 0.75, transparent: true })));
+
+  // ---- Loaded chunk boxes ----
+  const crZ = chunksForDim(roi[0][0], roi[0][1], cz);
+  const crY = chunksForDim(roi[1][0], roi[1][1], cy);
+  const crX = chunksForDim(roi[2][0], roi[2][1], cx);
+  const roiChunkCount = crZ.count * crY.count * crX.count;
+  const noteEl = document.getElementById('chunk-count-note');
+  const MAX_INSTANCES = 512;
+
+  if (roiChunkCount <= MAX_INSTANCES) {
+    noteEl.textContent = '';
+    const unitGeo = new THREE.BoxGeometry(1, 1, 1);
+    const fillMat = new THREE.MeshBasicMaterial({ color: 0x34d399, opacity: 0.22, transparent: true, side: THREE.DoubleSide, depthWrite: false });
+    const mesh = new THREE.InstancedMesh(unitGeo, fillMat, roiChunkCount);
+    mesh.renderOrder = 1;
+    const dummy = new THREE.Object3D();
+    const edgePts = [];
+    let idx = 0;
+
+    for (let ki = crZ.first; ki <= crZ.last; ki++) {
+      for (let ji = crY.first; ji <= crY.last; ji++) {
+        for (let ii = crX.first; ii <= crX.last; ii++) {
+          const z0v = ki * cz, z1v = Math.min((ki + 1) * cz, nz);
+          const y0v = ji * cy, y1v = Math.min((ji + 1) * cy, ny);
+          const x0v = ii * cx, x1v = Math.min((ii + 1) * cx, nx);
+          const dw = wx(x1v) - wx(x0v), dh = wy(y1v) - wy(y0v), dd = wz(z1v) - wz(z0v);
+          dummy.position.set(wx(x0v) + dw / 2, wy(y0v) + dh / 2, wz(z0v) + dd / 2);
+          dummy.scale.set(dw, dh, dd);
+          dummy.updateMatrix();
+          mesh.setMatrixAt(idx++, dummy.matrix);
+
+          const x0w = wx(x0v), x1w = wx(x1v), y0w = wy(y0v), y1w = wy(y1v), z0w = wz(z0v), z1w = wz(z1v);
+          const c = [[x0w,y0w,z0w],[x1w,y0w,z0w],[x1w,y1w,z0w],[x0w,y1w,z0w],
+                     [x0w,y0w,z1w],[x1w,y0w,z1w],[x1w,y1w,z1w],[x0w,y1w,z1w]]
+            .map(([x,y,z]) => new THREE.Vector3(x, y, z));
+          [[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]]
+            .forEach(([a, b]) => edgePts.push(c[a], c[b]));
+        }
+      }
+    }
+
+    mesh.instanceMatrix.needsUpdate = true;
+    add3d(mesh);
+    const edgeGeo = new THREE.BufferGeometry().setFromPoints(edgePts);
+    add3d(new THREE.LineSegments(edgeGeo, new THREE.LineBasicMaterial({ color: 0x34d399, opacity: 0.9, transparent: true })));
+  } else {
+    // Too many individual chunks — draw the loaded-region bounding box
+    noteEl.textContent = `${roiChunkCount.toLocaleString()} chunks to load — showing bounding box of loaded region`;
+    const z0v = crZ.first * cz, z1v = Math.min((crZ.last + 1) * cz, nz);
+    const y0v = crY.first * cy, y1v = Math.min((crY.last + 1) * cy, ny);
+    const x0v = crX.first * cx, x1v = Math.min((crX.last + 1) * cx, nx);
+    const dw = wx(x1v) - wx(x0v), dh = wy(y1v) - wy(y0v), dd = wz(z1v) - wz(z0v);
+    const geo = new THREE.BoxGeometry(dw, dh, dd);
+    const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0x34d399, opacity: 0.18, transparent: true, side: THREE.DoubleSide, depthWrite: false }));
+    mesh.position.set(wx(x0v) + dw / 2, wy(y0v) + dh / 2, wz(z0v) + dd / 2);
+    add3d(mesh);
+    const edgesGeo = new THREE.EdgesGeometry(geo);
+    const lines = new THREE.LineSegments(edgesGeo, new THREE.LineBasicMaterial({ color: 0x34d399 }));
+    lines.position.copy(mesh.position);
+    add3d(lines);
+  }
+
+  // ---- ROI box ----
+  {
+    const rz0 = roi[0][0], rz1 = roi[0][1];
+    const ry0 = roi[1][0], ry1 = roi[1][1];
+    const rx0 = roi[2][0], rx1 = roi[2][1];
+    const dw = wx(rx1) - wx(rx0), dh = wy(ry1) - wy(ry0), dd = wz(rz1) - wz(rz0);
+    const geo = new THREE.BoxGeometry(dw, dh, dd);
+    const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0x6366f1, opacity: 0.38, transparent: true, side: THREE.DoubleSide, depthWrite: false }));
+    mesh.position.set(wx(rx0) + dw / 2, wy(ry0) + dh / 2, wz(rz0) + dd / 2);
+    mesh.renderOrder = 2;
+    add3d(mesh);
+    const edgesGeo = new THREE.EdgesGeometry(geo);
+    const lines = new THREE.LineSegments(edgesGeo, new THREE.LineBasicMaterial({ color: 0x818cf8 }));
+    lines.position.copy(mesh.position);
+    add3d(lines);
+  }
+
+  // Position camera nicely
+  const camDist = Math.max(W, H, D) * 2.0;
+  camera3d.position.set(camDist * 0.75, camDist * 0.6, camDist * 0.95);
+  camera3d.lookAt(0, 0, 0);
+  camera3d.near = camDist * 0.001;
+  camera3d.far = camDist * 50;
+  camera3d.updateProjectionMatrix();
+  controls3d.target.set(0, 0, 0);
+  controls3d.update();
+}
+
+function resetCamera3D() {
+  if (!camera3d || !controls3d) return;
+  const shape = getArrayShape();
+  const S = 10 / Math.max(...shape);
+  const camDist = Math.max(shape[0], shape[1], shape[2]) * S * 2.0;
+  camera3d.position.set(camDist * 0.75, camDist * 0.6, camDist * 0.95);
+  controls3d.target.set(0, 0, 0);
+  controls3d.update();
+}
+
+// ---- Info panel ----
+function buildChunkDetails(shape, chunks, roi, dtype, stats) {
+  const chunkBytes = chunks.reduce((a, b) => a * b, 1) * dtype;
+  const gridShape = shape.map((s, i) => Math.ceil(s / chunks[i]));
+  const roiCells = roi.reduce((a, r) => a * (r[1] - r[0]), 1);
+  const loadedCells = stats.roiChunks * chunks.reduce((a, b) => a * b, 1);
+  const chunkRanges = [];
+  for (let i = 0; i < dims; i++) {
+    const { first, last } = chunksForDim(roi[i][0], roi[i][1], chunks[i]);
+    chunkRanges.push(`dim${i}: [${first}..${last}]`);
+  }
+
+  const rows = [
+    ['Array shape', `[${shape.join(' × ')}]`],
+    ['Chunk shape', `[${chunks.join(' × ')}]`],
+    ['Chunk grid shape', `[${gridShape.join(' × ')}]`],
+    ['Chunk size (uncompressed)', fmtBytes(chunkBytes)],
+    ['Total chunks in array', stats.totalChunks.toLocaleString()],
+    ['Chunks to load (ROI)', stats.roiChunks.toLocaleString()],
+    ['Bytes to load (uncompressed)', fmtBytes(stats.totalBytes)],
+    ['ROI cells requested', roiCells.toLocaleString()],
+    ['Cells loaded (full chunks)', loadedCells.toLocaleString()],
+    ['Data utilization', stats.efficiency + '%'],
+    ['Chunk indices (ROI)', chunkRanges.join(', ')],
+  ];
+
+  document.getElementById('chunk-details').innerHTML = rows.map(([k, v]) =>
+    `<div class="info-row"><span class="k">${k}</span><span class="v">${v}</span></div>`
+  ).join('');
+}
+
+// ---- 2D canvas drag to set ROI ----
+function setupCanvasDrag() {
+  const canvas = document.getElementById('canvas2d');
+  canvas.addEventListener('mousedown', e => { isDragging = true; dragStart = canvasToArray(canvas, e); });
+  canvas.addEventListener('mousemove', e => { if (isDragging) applyDrag(dragStart, canvasToArray(canvas, e)); });
+  canvas.addEventListener('mouseup', e => {
+    if (!isDragging) return;
+    isDragging = false; applyDrag(dragStart, canvasToArray(canvas, e)); dragStart = null;
+  });
+  canvas.addEventListener('mouseleave', () => { isDragging = false; dragStart = null; });
+}
+
+function canvasToArray(canvas, e) {
+  const rect = canvas.getBoundingClientRect();
+  const shape = getArrayShape();
+  const chunks = getChunkShape();
+  const { scaleR, scaleC, cellSize } = computeCanvasSize(shape[0], shape[1], chunks[0], chunks[1]);
+  const row = Math.floor((e.clientY - rect.top) / (scaleR * cellSize));
+  const col = Math.floor((e.clientX - rect.left) / (scaleC * cellSize));
+  return { row: clamp(row, 0, shape[0] - 1), col: clamp(col, 0, shape[1] - 1) };
+}
+
+function applyDrag(start, end) {
+  if (!start) return;
+  const r0 = Math.min(start.row, end.row), r1 = Math.max(start.row, end.row) + 1;
+  const c0 = Math.min(start.col, end.col), c1 = Math.max(start.col, end.col) + 1;
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+  set('r0s', r0); set('r0e', r1); set('r1s', c0); set('r1e', c1);
+  update();
+}
+
+// ---- Expose globals (needed for inline HTML event handlers) ----
+window.setDims = function(d) {
+  dims = d;
+  document.getElementById('btn2d').classList.toggle('active', d === 2);
+  document.getElementById('btn3d').classList.toggle('active', d === 3);
+  document.getElementById('viz-2d').style.display = d === 2 ? 'block' : 'none';
+  document.getElementById('viz-3d').style.display = d === 3 ? 'block' : 'none';
+  if (d === 2) stopAnimation3d();
+  buildFields();
+  update();
+  if (d === 3 && renderer3d) requestAnimationFrame(handleResize3D);
+};
+
+window.update = update;
+window.resetCamera3D = resetCamera3D;
+window.onMinSlider = onMinSlider;
+window.onMaxSlider = onMaxSlider;
+window.onRoiNumber = onRoiNumber;
+
+// ---- Init ----
+setupCanvasDrag();
+buildFields();
+update();
+</script>
+</body>
+</html>
