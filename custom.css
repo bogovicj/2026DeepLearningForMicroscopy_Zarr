@@ -1,0 +1,6 @@
+#title-slide .title,
+#title-slide .subtitle,
+#title-slide .author,
+#title-slide .date {
+  opacity: 0;
+}
