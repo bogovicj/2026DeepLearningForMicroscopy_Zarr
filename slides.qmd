@@ -170,16 +170,24 @@ visualization and analysis.
 
 ::::
 
+## Software
 
-## Resources
+* [zarr-python]()
+* [tensorstore]()
+* [ome-zarr-py](https://ome-zarr.readthedocs.io/)
+* [ngff-zarr](https://ngff-zarr.readthedocs.io/en/latest/)
+* [n5-ij](https://github.com/saalfeldlab/n5-ij#n5-ij-)
 
-* [An Introduction to OME-Zarr for Big BioImaging Data](https://ome-zarr-book.readthedocs.io/)
+## General Resources
+
 * [Zarr specifications](https://zarr-specs.readthedocs.io/en/latest/specs.html)
+* [An Introduction to OME-Zarr for Big BioImaging Data](https://ome-zarr-book.readthedocs.io/)
 * [OME-Zarr resources](https://ngff.openmicroscopy.org/resources/index.html)
 * [Image Data Resource](https://idr.openmicroscopy.org)
 * [image.sc forum](https://forum.image.sc/)
 
-### Videos
+## Videos
 
 [OME-Zarr: A next generation file format for FAIR bioimaging data with Chris Barnes.](https://youtu.be/HsqH6RAcJps?si=7FZYrumNiPJEXOXA)
+
 
