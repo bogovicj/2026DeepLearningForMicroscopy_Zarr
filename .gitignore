@@ -11,4 +11,5 @@ videos
 
 
 /.quarto/
+/notebooks/.ipynb_checkpoints/
 /slides_files/
