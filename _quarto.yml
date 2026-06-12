@@ -19,6 +19,9 @@ website:
           - text: "Bad Ideas"
             href: notebooks/bad_ideas.html
 
+execute:
+  enabled: false
+
 format:
   html:
     theme: cosmo
