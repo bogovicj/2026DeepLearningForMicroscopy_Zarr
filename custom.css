@@ -4,3 +4,10 @@
 #title-slide .date {
   opacity: 0;
 }
+
+.image-credit {
+  position: absolute;
+  bottom: 0.5em;
+  font-size: 0.45em;
+  color: #777;
+}

@@ -10,6 +10,8 @@ format:
     slide-number: true
     preview-links: auto
     css: custom.css
+    chalkboard:
+        chalk-effect: 0.0
 title-slide-attributes:
   data-background-image: figs/title2.png
   data-background-size: contain
@@ -17,9 +19,9 @@ title-slide-attributes:
 ---
 
 
-
 ## Conclusions
 
+::: {.incremental}
 - Zarr is a great choice for storing large bio-imaging data because:
     - efficiently load subsets of your input image
     - write subsets of your output image in parallel
@@ -28,16 +30,40 @@ title-slide-attributes:
 - Use OME-Zarr for metadata
     - Many software tools support it
     - Be a good digital citizen
+:::
+---
+
+## Monolithic formats vs Zarr
+
+![](figs/zarr/zarr-illustrations-falk-2022/300dpi/monolithic-vs-chunked-300dpi.png){width="30%"}
+
+::: {.image-credit}
+Image: “Monolithic vs. chunked” Henning Falk ©2022 NumFOCUS (CC BY 4.0 license)
+:::
+
+---
+
+## FAIR
+
+![](figs/zarr/zarr-illustrations-falk-2022/300dpi/fair-reuse-300dpi.png)
+
+::: {.image-credit}
+Image: “FAIR re-use” Henning Falk ©2022 NumFOCUS (CC BY 4.0 license)
+:::
+
+---
 
 ## Zarr will not solve all your problems
 
+::: {.incremental}
 - Zarr lets you make bad decisions, 
     - let's learn to avoid some of them today
 - Zarr makes it harder to share (download) your data
 - Zarr has limited compression options
     - all lossless
     - converting to zarr may result in an increase in storage cost
-
+:::
+---
 
 ## Plan
 
@@ -58,7 +84,6 @@ title-slide-attributes:
 ::: {style="margin-top: 45%"}
 A Hierarchical, Chunked, Compressed, cloud-native storage format for N-dimensional arrays
 :::
-
 ---
 
 ## Array
@@ -78,6 +103,10 @@ Multi-dimensional arrays
 ## Cloud-native {background-image="./figs/art/Waterpipes.jpeg" background-opacity=0.3}
 
 Zarr is a data storage specification more than a *file* format.
+
+::: {.image-credit}
+Image: “Waterpipes” Hephaestos ©2004 NumFOCUS (CC BY 3.0 license)
+:::
 
 
 ## Hierarchical 
@@ -101,16 +130,58 @@ Store related Zarr arrays in a meaningful Zarr group.
 
 # Chunked {background-image="./figs/art/Space_Invader_2007_Shoreditch.jpg" background-opacity=0.7}
 
+## Chunks
+
+the subset of the array that can be independently accessed.
+
+- Each chunk is compressed separately.
+- To read a particular region of interest (ROI), need to read *every chunk that overlaps with that ROI*.
+
+
+## Example: sliced chunking
+
+![](figs/zarr/zarr-book/zarr-chunk-slice.png)
+![](figs/zarr/zarr-book/zarr-chunk-slice-roi.webp)
+
+## Example: rectangular chunking
+
+![](figs/zarr/zarr-book/zarr-chunk-rect.webp)
+![](figs/zarr/zarr-book/zarr-chunk-rect-roi.webp)
+
+
 ## Good chunk shapes
 
 - Definitely consider how you will access the data
 - About 1MB in size
-- Approximately square
+- "Approximately square"
     - considering spatial resolution
+- Probably use chunk size `1` or `<size>` for small dimensions (size <~ 10`) 
 
 ## Customize chunk size for your access
 
 [Demo](http://localhost:8080/)
+
+# Zarr v3
+
+## Zarr v3 vs Zarr v2
+
+- All metadata goes in `zarr.json`
+    - instead of Zarr2's `.zgroup`, `.zarray`, `.zattrs`
+- Mostly details
+- One big new feature...
+
+
+# Shards {background-image="./figs/xzibit.jpg" background-opacity=0.6}
+
+"Yo dawg, I heard you like chunks..."
+
+[*"...so I put chunks in your chunks, so you can chunk while you chunk"*]{style="font-size: 0.55em;"}
+
+## What is a shard?
+
+A chunk, with chunks in it.
+
+![](./figs/zarr/zarr-array-shard.png)
 
 
 ---
@@ -120,9 +191,6 @@ Store related Zarr arrays in a meaningful Zarr group.
 Images are multi-dimensional arrays.
 How are they stored?
 
-## Monolithic formats vs Zarr
-
-![](figs/zarr/zarr-illustrations-falk-2022/300dpi/monolithic-vs-chunked-300dpi.png)
 
 
 ## Hands on
@@ -131,7 +199,6 @@ Live demo
 
 # Metadata {background-image="./figs/art/Ouroboros_Canberra.jpeg" background-opacity=0.7}
 
-[Ouroboros, Canberra](https://en.wikipedia.org/wiki/Ouroboros#/media/File:Ouroboros,_Canberra.jpg)
 
 ## OME-Zarr
 
