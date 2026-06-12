@@ -181,8 +181,18 @@ the subset of the array that can be independently accessed.
 
 A chunk, with chunks in it.
 
-![](./figs/zarr/zarr-array-shard.png)
+:::: {.columns}
 
+::: {.column width="50%"}
+![](./figs/zarr/zarr-array-shard.png)
+:::
+
+::: {.column width="50%"}
+- *read* inner chunks in parallel
+- *write* outer shards in parallel
+:::
+
+::::
 
 ---
 
