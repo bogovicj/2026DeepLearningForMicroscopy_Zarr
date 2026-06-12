@@ -1,6 +1,8 @@
 project:
   type: website
   output-dir: _site
+  resources:
+    - webdemos/
 
 website:
   title: "Deep Learning for Microscopy — Zarr"

@@ -159,7 +159,7 @@ the subset of the array that can be independently accessed.
 
 ## Customize chunk size for your access
 
-[Demo](http://localhost:8080/)
+[Demo](webdemos/chunk-demo.html)
 
 # Zarr v3
 
