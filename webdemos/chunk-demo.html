@@ -288,16 +288,16 @@ function getRoi() {
 
 function chunksForDim(start, end, chunkSize) {
   const first = Math.floor(start / chunkSize);
-  const last = Math.ceil(end / chunkSize) - 1;
+  const last = Math.ceil((end + 1) / chunkSize) - 1;
   return { first, last, count: last - first + 1 };
 }
 
 function validate(shape, chunks, roi) {
   const errs = [];
   for (let i = 0; i < dims; i++) {
-    if (roi[i][0] >= roi[i][1]) errs.push(`ROI dim ${i}: start must be < end`);
+    if (roi[i][0] > roi[i][1]) errs.push(`ROI dim ${i}: start must be ≤ end`);
     if (roi[i][0] < 0) errs.push(`ROI dim ${i}: start must be ≥ 0`);
-    if (roi[i][1] > shape[i]) errs.push(`ROI dim ${i}: end (${roi[i][1]}) > array size (${shape[i]})`);
+    if (roi[i][1] >= shape[i]) errs.push(`ROI dim ${i}: end (${roi[i][1]}) must be < array size (${shape[i]})`);
   }
   return errs;
 }
@@ -308,7 +308,7 @@ function computeStats(shape, chunks, roi, dtype) {
   for (let i = 0; i < dims; i++) roiChunks *= chunksForDim(roi[i][0], roi[i][1], chunks[i]).count;
   const chunkBytes = chunks.reduce((a, b) => a * b, 1) * dtype;
   const totalBytes = roiChunks * chunkBytes;
-  const roiCells = roi.reduce((a, r) => a * (r[1] - r[0]), 1);
+  const roiCells = roi.reduce((a, r) => a * (r[1] - r[0] + 1), 1);
   const loadedCells = roiChunks * chunks.reduce((a, b) => a * b, 1);
   const efficiency = loadedCells > 0 ? (roiCells / loadedCells * 100).toFixed(1) : 0;
   return { totalChunks, roiChunks, totalBytes, efficiency };
@@ -319,7 +319,7 @@ function buildFields() {
   const dimLabels = dims === 2 ? ['Y', 'X'] : ['Z', 'Y', 'X'];
   const arrayDefs = dims === 2 ? [128, 128] : [64, 64, 64];
   const chunkDefs = dims === 2 ? [32, 32] : [16, 16, 16];
-  const roiDefs  = dims === 2 ? [[16,80],[16,80]] : [[8,40],[8,40],[8,40]];
+  const roiDefs  = dims === 2 ? [[16,79],[16,79]] : [[8,39],[8,39],[8,39]];
 
   let asHtml, csHtml, roiHtml;
   if (dims === 2) {
@@ -332,15 +332,15 @@ function buildFields() {
       <div class="field"><label>${dimLabels[1]}</label><input type="number" id="cs1" value="${chunkDefs[1]}" min="1" oninput="window.update()"></div>
     </div>`;
     roiHtml = dimLabels.map((l, i) => `
-      <div class="field"><label>${l}: [min, max)</label>
+      <div class="field"><label>${l}: [min, max]</label>
         <div class="dual-range">
           <div class="range-track"><div class="range-fill" id="rf${i}"></div></div>
-          <input type="range" id="r${i}s-slider" min="0" max="${arrayDefs[i]}" value="${roiDefs[i][0]}" oninput="window.onMinSlider(${i})">
-          <input type="range" id="r${i}e-slider" min="0" max="${arrayDefs[i]}" value="${roiDefs[i][1]}" oninput="window.onMaxSlider(${i})">
+          <input type="range" id="r${i}s-slider" min="0" max="${arrayDefs[i] - 1}" value="${roiDefs[i][0]}" oninput="window.onMinSlider(${i})">
+          <input type="range" id="r${i}e-slider" min="0" max="${arrayDefs[i] - 1}" value="${roiDefs[i][1]}" oninput="window.onMaxSlider(${i})">
         </div>
         <div class="row">
           <input type="number" id="r${i}s" value="${roiDefs[i][0]}" min="0" oninput="window.onRoiNumber(${i})">
-          <input type="number" id="r${i}e" value="${roiDefs[i][1]}" min="1" oninput="window.onRoiNumber(${i})">
+          <input type="number" id="r${i}e" value="${roiDefs[i][1]}" min="0" oninput="window.onRoiNumber(${i})">
         </div></div>`).join('');
   } else {
     asHtml = `<div class="row3">${dimLabels.map((l,i) =>
@@ -350,15 +350,15 @@ function buildFields() {
       `<div class="field"><label>${l}</label><input type="number" id="cs${i}" value="${chunkDefs[i]}" min="1" oninput="window.update()"></div>`
     ).join('')}</div>`;
     roiHtml = dimLabels.map((l, i) => `
-      <div class="field"><label>${l}: [min, max)</label>
+      <div class="field"><label>${l}: [min, max]</label>
         <div class="dual-range">
           <div class="range-track"><div class="range-fill" id="rf${i}"></div></div>
-          <input type="range" id="r${i}s-slider" min="0" max="${arrayDefs[i]}" value="${roiDefs[i][0]}" oninput="window.onMinSlider(${i})">
-          <input type="range" id="r${i}e-slider" min="0" max="${arrayDefs[i]}" value="${roiDefs[i][1]}" oninput="window.onMaxSlider(${i})">
+          <input type="range" id="r${i}s-slider" min="0" max="${arrayDefs[i] - 1}" value="${roiDefs[i][0]}" oninput="window.onMinSlider(${i})">
+          <input type="range" id="r${i}e-slider" min="0" max="${arrayDefs[i] - 1}" value="${roiDefs[i][1]}" oninput="window.onMaxSlider(${i})">
         </div>
         <div class="row">
           <input type="number" id="r${i}s" value="${roiDefs[i][0]}" min="0" oninput="window.onRoiNumber(${i})">
-          <input type="number" id="r${i}e" value="${roiDefs[i][1]}" min="1" oninput="window.onRoiNumber(${i})">
+          <input type="number" id="r${i}e" value="${roiDefs[i][1]}" min="0" oninput="window.onRoiNumber(${i})">
         </div></div>`).join('');
   }
 
@@ -388,8 +388,8 @@ function syncSliders() {
     const sNum = document.getElementById(`r${i}s`);
     const eNum = document.getElementById(`r${i}e`);
     if (!sSlider || !eSlider) continue;
-    sSlider.max = shape[i];
-    eSlider.max = shape[i];
+    sSlider.max = shape[i] - 1;
+    eSlider.max = shape[i] - 1;
     if (sNum) sSlider.value = sNum.value;
     if (eNum) eSlider.value = eNum.value;
     updateSliderFill(i);
@@ -793,7 +793,7 @@ function resetCamera3D() {
 function buildChunkDetails(shape, chunks, roi, dtype, stats) {
   const chunkBytes = chunks.reduce((a, b) => a * b, 1) * dtype;
   const gridShape = shape.map((s, i) => Math.ceil(s / chunks[i]));
-  const roiCells = roi.reduce((a, r) => a * (r[1] - r[0]), 1);
+  const roiCells = roi.reduce((a, r) => a * (r[1] - r[0] + 1), 1);
   const loadedCells = stats.roiChunks * chunks.reduce((a, b) => a * b, 1);
   const chunkRanges = [];
   for (let i = 0; i < dims; i++) {
@@ -844,8 +844,8 @@ function canvasToArray(canvas, e) {
 
 function applyDrag(start, end) {
   if (!start) return;
-  const r0 = Math.min(start.row, end.row), r1 = Math.max(start.row, end.row) + 1;
-  const c0 = Math.min(start.col, end.col), c1 = Math.max(start.col, end.col) + 1;
+  const r0 = Math.min(start.row, end.row), r1 = Math.max(start.row, end.row);
+  const c0 = Math.min(start.col, end.col), c1 = Math.max(start.col, end.col);
   const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
   set('r0s', r0); set('r0e', r1); set('r1s', c0); set('r1e', c1);
   update();
