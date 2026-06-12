@@ -1,0 +1,31 @@
+project:
+  type: website
+  output-dir: _site
+
+website:
+  title: "Deep Learning for Microscopy — Zarr"
+  navbar:
+    left:
+      - text: "Slides"
+        href: slides.html
+      - text: "Notebooks"
+        menu:
+          - text: "Zarr Basics"
+            href: notebooks/zarr_basics.html
+          - text: "Memory Layout"
+            href: notebooks/memoryLayout.html
+          - text: "OME-Zarr"
+            href: notebooks/ome-zarr-py.html
+          - text: "Bad Ideas"
+            href: notebooks/bad_ideas.html
+
+format:
+  html:
+    theme: cosmo
+  revealjs:
+    theme: default
+    slide-number: true
+    preview-links: auto
+    css: custom.css
+    chalkboard:
+      chalk-effect: 0.0
