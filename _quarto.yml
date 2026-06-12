@@ -25,10 +25,3 @@ execute:
 format:
   html:
     theme: cosmo
-  revealjs:
-    theme: default
-    slide-number: true
-    preview-links: auto
-    css: custom.css
-    chalkboard:
-      chalk-effect: 0.0
